@@ -12,13 +12,13 @@
 import Foundation
 
 public enum WebSocketError : ErrorType, CustomStringConvertible {
-    case Address(String)
-    case Closed(String)
+    case InvalidAddress
+    case Closed
     case Argument(String)
     case Stream(String)
-    case EOF(String)
+    case EOF
     case Zlib(String)
-    case Memory(String)
+    case Memory
     case UTF8(String)
     case Response(String)
     case Options(String)
@@ -27,13 +27,13 @@ public enum WebSocketError : ErrorType, CustomStringConvertible {
     case LibraryError(String)
     private func components() -> [String] {
         switch self {
-        case .Address(let details): return ["Address", details]
-        case .Closed(let details): return ["Closed", details]
+        case .InvalidAddress: return ["InvalidAddress"]
+        case .Closed: return ["Closed"]
         case .Argument(let details): return ["Argument", details]
         case .Stream(let details): return ["Stream", details]
-        case .EOF(let details): return ["EOF", details]
+        case .EOF: return ["EOF"]
         case .Zlib(let details): return ["Zlib", details]
-        case .Memory(let details): return ["Memory", details]
+        case .Memory: return ["Memory"]
         case .UTF8(let details): return ["UTF8", details]
         case .Response(let details): return ["Response", details]
         case .Options(let details): return ["Options", details]
@@ -43,10 +43,17 @@ public enum WebSocketError : ErrorType, CustomStringConvertible {
         }
     }
     public var details : String {
-        return components()[1]
+        let parts = components()
+        if parts.count == 1 {
+            return ""
+        }
+        return parts[1]
     }
     public var description : String {
         let parts = components()
+        if parts.count == 1 {
+            return parts[0]
+        }
         return "\(parts[0])(\(parts[1]))"
     }
 }
@@ -145,13 +152,13 @@ public struct WebSocketEvents {
     /// An event to be called when the WebSocket connection's readyState changes to .Closed.
     public var close : (code : Int, reason : String, wasClean : Bool)->() = {(code, reason, wasClean) in}
     /// An event to be called when an error occurs.
-    public var error : (error : ErrorType)->() = {(error) in}
+    public var error : (error : WebSocketError)->() = {(error) in}
     /// An event to be called when a message is received from the server.
     public var message : (data : Any)->() = {(data) in}
     /// An event to be called when a pong is received from the server.
     public var pong : (data : Any)->() = {(data) in}
     /// An event to be called when the WebSocket process has ended; this event is guarenteed to be called once and can be used as an alternative to the "close" or "error" events.
-    public var end : (code : Int, reason : String, wasClean : Bool, error : ErrorType?)->() = {(code, reason, wasClean, error) in}
+    public var end : (code : Int, reason : String, wasClean : Bool, error : WebSocketError?)->() = {(code, reason, wasClean, error) in}
 }
 
 /// The WebSocketBinaryType enum is used by the binaryType property and indicates the type of binary data being transmitted by the WebSocket connection.
@@ -361,7 +368,7 @@ public class WebSocket {
     }
     
     
-    private func fireEvent(event : InternalEvent, frame : Frame? = nil, error : ErrorType? = nil, code : Int = 0, reason : String = "", wasClean : Bool = false){
+    private func fireEvent(event : InternalEvent, frame : Frame? = nil, error : WebSocketError? = nil, code : Int = 0, reason : String = "", wasClean : Bool = false){
         lock()
         let binaryType = _binaryType
         let events = _event
@@ -403,7 +410,7 @@ public class WebSocket {
         }
     }
     private func main(){
-        var finalError : ErrorType?
+        var finalError : WebSocketError?
         var finalErrorIsClosed = false
         var (closeCode, closeReason, closeClean) = (0, "", false)
         defer {
@@ -425,7 +432,7 @@ public class WebSocket {
                 let cclose = self.cclose
                 if !cclose {
                     var errorNotKnown = false
-                    if let err = finalError as? WebSocketError {
+                    if let err = finalError {
                         switch err {
                         case .ProtocolError:
                             (closeCode, closeReason) = (1002, "Protocol error")
@@ -544,7 +551,6 @@ public class WebSocket {
                 }
             }
         } catch {
-            
             var isEOF = false
             var isClosed = false
             if let error = error as? WebSocketError {
@@ -558,12 +564,12 @@ public class WebSocket {
                 default:
                     break
                 }
+                finalError = error
             }
             if !isEOF {
-                finalError = error
                 finalErrorIsClosed = isClosed
-                if !finalErrorIsClosed {
-                    fireEvent(.Error, error: error)
+                if !finalErrorIsClosed && finalError != nil {
+                    fireEvent(.Error, error: finalError)
                 }
             }
         }
@@ -708,7 +714,7 @@ private class TCPConn {
         delegate.c = self
         let addr = address.componentsSeparatedByString(":")
         if addr.count != 2 || Int(addr[1]) == nil {
-            throw WebSocketError.Address("TCPConn.init")
+            throw WebSocketError.InvalidAddress
         }
         var (rdo, wro) : (NSInputStream?, NSOutputStream?)
         NSStream.getStreamsToHostWithName(addr[0], port: Int(addr[1])!, inputStream: &rdo, outputStream: &wro)
@@ -757,8 +763,8 @@ private class TCPConn {
             wait(defaultWait)
         }
         pthread_mutex_unlock(&mutex)
-        if rwerror != nil {
-            throw rwerror!
+        if let error = rwerror {
+            throw WebSocketError.Stream(error.localizedDescription)
         }
     }
     private func wait(timeout : NSTimeInterval = -1) -> WaitResult {
@@ -788,7 +794,7 @@ private class TCPConn {
     }
     func write(buffer : UnsafePointer<UInt8>, length : Int) throws -> Int {
         if length < 0 {
-            throw WebSocketError.Argument("TCPConn.write")
+            throw WebSocketError.Argument("write negative length")
         }
         lock()
         defer { unlock() }
@@ -796,9 +802,9 @@ private class TCPConn {
         for ;; {
             for ;; {
                 if closed {
-                    throw WebSocketError.Closed("TCPConn.write")
+                    throw WebSocketError.Closed
                 }
-                if let serror = errorForStatus(wr, details: "TCPConn.write") {
+                if let serror = errorForStatus(wr, details: "write") {
                     throw serror
                 }
                 if wr.hasSpaceAvailable {
@@ -808,43 +814,43 @@ private class TCPConn {
             }
             let n = wr.write(buffer+total, maxLength: length-total)
             if n < 0 {
-                throw WebSocketError.Stream("TCPConn.write")
+                throw WebSocketError.Stream("write underflow")
             }
             total += n
             if total > length {
-                throw WebSocketError.Stream("TCPConn.write")
+                throw WebSocketError.Stream("write overflow")
             } else if total == length {
                 break
             }
         }
         return total
     }
-    func errorForStatus(stream : NSStream, details: String) -> ErrorType? {
+    func errorForStatus(stream : NSStream, details: String) -> WebSocketError? {
         switch stream.streamStatus {
         case .NotOpen, .Closed:
-            return WebSocketError.Closed(details)
+            return WebSocketError.Closed
         case .Error:
             if let error = stream.streamError {
-                return error
+                return WebSocketError.Stream(error.localizedDescription)
             }
             return WebSocketError.Stream(details)
         case .AtEnd:
-            return WebSocketError.EOF(details)
+            return WebSocketError.EOF
         default:
             return nil
         }
     }
     func read(buffer : UnsafeMutablePointer<UInt8>, length : Int) throws -> Int {
         if length < 0 {
-            throw WebSocketError.Argument("TCPConn.read")
+            throw WebSocketError.Argument("read negative length")
         }
         lock()
         defer { unlock() }
         for ;; {
             if closed {
-                throw WebSocketError.Closed("TCPConn.read")
+                throw WebSocketError.Closed
             }
-            if let serror = errorForStatus(rd, details: "TCPConn.read") {
+            if let serror = errorForStatus(rd, details: "read") {
                 throw serror
             }
             if rd.hasBytesAvailable {
@@ -854,7 +860,7 @@ private class TCPConn {
         }
         let n = rd.read(buffer, maxLength: length)
         if n < 0 {
-            throw WebSocketError.Stream("TCPConn.read")
+            throw WebSocketError.Stream("read underflow")
         }
         return n
     }
@@ -997,7 +1003,7 @@ private class Inflater {
                     bufferSize *= 2
                     let nbuf = UnsafeMutablePointer<UInt8>(realloc(buffer, bufferSize))
                     if nbuf == nil {
-                        throw WebSocketError.Memory("Inflater.inflate")
+                        throw WebSocketError.Memory
                     }
                     buffer = nbuf
                     buf = buffer+Int(buflen)
