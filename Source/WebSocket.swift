@@ -11,42 +11,61 @@
 
 import Foundation
 
-private enum ErrCode : Int, CustomStringConvertible {
-    case Protocol = 1002, Payload = 1007, Undefined = -100, Codepoint = -101, Library = -102, Socket = -103
-    var description : String {
+public enum WebSocketError : ErrorType, CustomStringConvertible {
+    case Address(String)
+    case Closed(String)
+    case Argument(String)
+    case Timeout(String)
+    case Stream(String)
+    case EOF(String)
+    case Zlib(String)
+    case Memory(String)
+    case UTF8(String)
+    case Response(String)
+    case Options(String)
+    case ProtocolError(String)
+    case PayloadError(String)
+    case LibraryError(String)
+    private func components() -> [String] {
         switch self {
-        case Protocol: return "Protocol error"
-        case Payload: return "Invalid payload data"
-        case Codepoint: return "Invalid codepoint"
-        case Library: return "Library error"
-        case Undefined: return "Undefined error"
-        case Socket: return "Broken socket"
+        case .Address(let details): return ["Address", details]
+        case .Closed(let details): return ["Closed", details]
+        case .Argument(let details): return ["Argument", details]
+        case .Timeout(let details): return ["Timeout", details]
+        case .Stream(let details): return ["Stream", details]
+        case .EOF(let details): return ["EOF", details]
+        case .Zlib(let details): return ["Zlib", details]
+        case .Memory(let details): return ["Memory", details]
+        case .UTF8(let details): return ["UTF8", details]
+        case .Response(let details): return ["Response", details]
+        case .Options(let details): return ["Options", details]
+        case .ProtocolError(let details): return ["ProtocolError", details]
+        case .PayloadError(let details): return ["PayloadError", details]
+        case .LibraryError(let details): return ["LibraryError", details]
         }
+    }
+    public var details : String {
+        return components()[1]
+    }
+    public var description : String {
+        let parts = components()
+        return "\(parts[1])(\(parts[1]))"
     }
 }
 
-private func makeError(error : String, _ code: ErrCode) -> ErrorType {
-    return NSError(domain: "com.github.tidwall.WebSocketConn", code: code.rawValue, userInfo: [NSLocalizedDescriptionKey:"\(error)"])
-}
-private func makeError(error : ErrorType, _ code: ErrCode) -> ErrorType {
-    let err = error as NSError
-    return NSError(domain: err.domain, code: code.rawValue, userInfo: [NSLocalizedDescriptionKey:"\(err.localizedDescription)"])
-}
-private func makeError(error : String) -> ErrorType {
-    return makeError(error, ErrCode.Library)
-}
+
 
 private let oneHundredYears : NSTimeInterval = 60*60*24*365*100
+//
+//private let errUTF8 = makeError("utf8")
+//private let errTimeout = makeError("timeout")
+//private let errClosed = makeError("closed")
+//private let errStream = makeError("stream error")
+//private let errEOF = makeError("eof")
+//private let errAddress = makeError("invalid address")
+//private let errNegative = makeError("length cannot be negative")
 
-private let errUTF8 = makeError("utf8")
-private let errTimeout = makeError("timeout")
-private let errClosed = makeError("closed")
-private let errStream = makeError("stream error")
-private let errEOF = makeError("eof")
-private let errAddress = makeError("invalid address")
-private let errNegative = makeError("length cannot be negative")
-
-private class BoxedBytes {
+private class Payload {
     var ptr : UnsafeMutablePointer<UInt8>
     var cap : Int
     var len : Int
@@ -238,6 +257,7 @@ public class WebSocket {
     private var creason : String = ""
     private var cclose : Bool = false
     
+    private var _eventQueue : dispatch_queue_t? = dispatch_get_main_queue()
     private var _subProtocol = ""
     private var _compression = WebSocketCompression()
     private var _services = WebSocketService.None
@@ -272,6 +292,11 @@ public class WebSocket {
     public var event : WebSocketEvents {
         get { lock(); defer { unlock() }; return _event }
         set { lock(); defer { unlock() }; _event = newValue }
+    }
+    /// The queue that events are sent to. The default is the main queue. Set to nil for no queue.
+    public var eventQueue : dispatch_queue_t? {
+        get { lock(); defer { unlock() }; return _eventQueue }
+        set { lock(); defer { unlock() }; _eventQueue = newValue }
     }
     /// A WebSocketBinaryType value indicating the type of binary data being transmitted by the connection. Default is .UInt8Array.
     public var binaryType : WebSocketBinaryType {
@@ -342,12 +367,16 @@ public class WebSocket {
     private enum InternalEvent {
         case Opened, Closed, Error, Text, Binary, End, Pong
     }
+    
+    
     private func fireEvent(event : InternalEvent, frame : Frame? = nil, error : ErrorType? = nil, code : Int = 0, reason : String = "", wasClean : Bool = false){
         lock()
         let binaryType = _binaryType
         let events = _event
+        let queue = _eventQueue
         unlock()
-        dispatch_sync(dispatch_get_main_queue()) {
+        
+        let block = { ()->() in
             switch event {
             case .Opened:
                 events.open()
@@ -375,6 +404,11 @@ public class WebSocket {
                 }
             }
         }
+        if let queue = queue {
+            dispatch_sync(queue, block)
+        } else {
+            block()
+        }
     }
     private func main(){
         var finalError : ErrorType?
@@ -398,16 +432,18 @@ public class WebSocket {
                 lock()
                 let cclose = self.cclose
                 if !cclose {
-                    var err : NSError?
-                    if finalError != nil {
-                        err = finalError as? NSError
+                    var errorNotKnown = false
+                    if let err = finalError as? WebSocketError {
+                        switch err {
+                        case .ProtocolError:
+                            (closeCode, closeReason) = (1002, "Protocol error")
+                        case .PayloadError:
+                            (closeCode, closeReason) = (1007, "Invalid frame payload data")
+                        default:
+                            errorNotKnown = true
+                        }
                     }
-                    let pva : ErrCode = .Protocol
-                    if err != nil && err!.code == pva.rawValue  {
-                        (closeCode, closeReason) = (1002, "Protocol error")
-                    } else if err != nil && err!.code == ErrCode.Payload.rawValue {
-                        (closeCode, closeReason) = (1007, "Invalid frame payload data")
-                    } else {
+                    if errorNotKnown {
                         if closeClean == false {
                             (closeCode, closeReason) = (1006, "Abnormal Closure")
                         }
@@ -667,7 +703,7 @@ private class TCPConn {
         delegate.c = self
         let addr = address.componentsSeparatedByString(":")
         if addr.count != 2 || Int(addr[1]) == nil {
-            throw errAddress
+            throw WebSocketError.Address("TCPConn.init")
         }
         var (rdo, wro) : (NSInputStream?, NSOutputStream?)
         NSStream.getStreamsToHostWithName(addr[0], port: Int(addr[1])!, inputStream: &rdo, outputStream: &wro)
@@ -771,7 +807,7 @@ private class TCPConn {
     }
     func write(buffer : UnsafePointer<UInt8>, length : Int) throws -> Int {
         if length < 0 {
-            throw errNegative
+            throw WebSocketError.Argument("TCPConn.write")
         }
         var total = 0
         for ;; {
@@ -779,13 +815,13 @@ private class TCPConn {
             for ;; {
                 if closed {
                     unlock()
-                    throw errClosed
+                    throw WebSocketError.Closed("TCPConn.write")
                 }
                 if NSDate().compare(_writeDeadline) != .OrderedAscending {
                     unlock()
-                    throw errTimeout
+                    throw WebSocketError.Timeout("TCPConn.write")
                 }
-                if let serror = errorForStatus(wr) {
+                if let serror = errorForStatus(wr, details: "TCPConn.write") {
                     unlock()
                     throw serror
                 }
@@ -797,48 +833,48 @@ private class TCPConn {
             let n = wr.write(buffer+total, maxLength: length-total)
             unlock()
             if n < 0 {
-                throw errStream
+                throw WebSocketError.Stream("TCPConn.write")
             }
             total += n
             if total > length {
-                throw errStream
+                throw WebSocketError.Stream("TCPConn.write")
             } else if total == length {
                 break
             }
         }
         return total
     }
-    func errorForStatus(stream : NSStream) -> ErrorType? {
+    func errorForStatus(stream : NSStream, details: String) -> WebSocketError? {
         switch stream.streamStatus {
         case .NotOpen, .Closed:
-            return errClosed
+            return WebSocketError.Closed(details)
         case .Error:
             if let error = stream.streamError {
-                return error
+                return WebSocketError.Stream(details + ": " + error.localizedDescription)
             }
-            return errStream
+            return WebSocketError.Stream(details)
         case .AtEnd:
-            return errEOF
+            return WebSocketError.EOF(details)
         default:
             return nil
         }
     }
     func read(buffer : UnsafeMutablePointer<UInt8>, length : Int) throws -> Int {
         if length < 0 {
-            throw errNegative
+            throw WebSocketError.Argument("TCPConn.read")
         }
         for var i = 0; i < 2; i++ {
             lock()
             for ;; {
                 if closed {
                     unlock()
-                    throw errClosed
+                    throw WebSocketError.Closed("TCPConn.write")
                 }
                 if NSDate().compare(_readDeadline) != .OrderedAscending {
                     unlock()
-                    throw errTimeout
+                    throw WebSocketError.Timeout("TCPConn.write")
                 }
-                if let serror = errorForStatus(rd) {
+                if let serror = errorForStatus(rd, details: "TCPConn.read") {
                     unlock()
                     throw serror
                 }
@@ -854,7 +890,7 @@ private class TCPConn {
             let n = rd.read(buffer, maxLength: length)
             unlock()
             if n < 0 {
-                throw errStream
+                throw WebSocketError.Stream("TCPConn.write")
             } else if n > 0 {
                 return n
             }
@@ -897,7 +933,7 @@ private class Frame {
     var inflate = false
     var code = OpCode.Continue
     var utf8 = UTF8()
-    var payload = BoxedBytes()
+    var payload = Payload()
     var statusCode = UInt16(0)
     var finished = true
 }
@@ -933,7 +969,7 @@ private struct z_stream {
 @asmname("inflate") private func inflateG(strm : UnsafeMutablePointer<Void>, flush : CInt) -> CInt
 @asmname("inflateEnd") private func inflateEndG(strm : UnsafeMutablePointer<Void>) -> CInt
 
-private func zerror(res : CInt) -> ErrorType? {
+private func zerror(res : CInt, details: String) -> WebSocketError? {
     var err = ""
     switch res {
     case 0: return nil
@@ -947,7 +983,7 @@ private func zerror(res : CInt) -> ErrorType? {
     case -6: err = "version error"
     default: err = "undefined error"
     }
-    return makeError("\(err): \(res)")
+    return WebSocketError.Zlib("\(details): \(err): \(res)")
 }
 
 private class Inflater {
@@ -1000,7 +1036,7 @@ private class Inflater {
                     bufferSize *= 2
                     let nbuf = UnsafeMutablePointer<UInt8>(realloc(buffer, bufferSize))
                     if nbuf == nil {
-                        throw makeError("out of memory")
+                        throw WebSocketError.Memory("Inflater.inflate")
                     }
                     buffer = nbuf
                     buf = buffer+Int(buflen)
@@ -1052,7 +1088,7 @@ private class UTF8 {
                 return
             }
             if byte == 0xC0 || byte == 0xC1 {
-                throw makeError("invalid codepoint: invalid byte")
+                throw WebSocketError.UTF8("invalid codepoint: invalid byte")
             }
             if byte >> 5 & 0x7 == 0x6 {
                 count = 2
@@ -1061,26 +1097,26 @@ private class UTF8 {
             } else if byte >> 3 & 0x1F == 0x1E {
                 count = 4
             } else {
-                throw makeError("invalid codepoint: frames")
+                throw WebSocketError.UTF8("invalid codepoint: frames")
             }
             procd = 1
             codepoint = (UInt32(byte) & (0xFF >> count)) << ((count-1) * 6)
             return
         }
         if byte >> 6 & 0x3 != 0x2 {
-            throw makeError("invalid codepoint: signature")
+            throw WebSocketError.UTF8("invalid codepoint: signature")
         }
         codepoint += UInt32(byte & 0x3F) << ((count-procd-1) * 6)
         if codepoint > 0x10FFFF || (codepoint >= 0xD800 && codepoint <= 0xDFFF) {
-            throw makeError("invalid codepoint: out of bounds")
+            throw WebSocketError.UTF8("invalid codepoint: out of bounds")
         }
         procd++
         if procd == count {
             if codepoint <= 0x7FF && count > 2 {
-                throw makeError("invalid codepoint: overlong")
+                throw WebSocketError.UTF8("invalid codepoint: overlong")
             }
             if codepoint <= 0xFFFF && count > 3 {
-                throw makeError("invalid codepoint: overlong")
+                throw WebSocketError.UTF8("invalid codepoint: overlong")
             }
             procd = 0
             count = 0
@@ -1221,14 +1257,14 @@ private class WebSocketConn {
             }
             let lineo = String(bytes: lineb, encoding: NSUTF8StringEncoding)
             if lineo == nil {
-                throw errUTF8
+                throw WebSocketError.UTF8("header line")
             }
             let trim : (String)->(String) = { (text) in return text.stringByTrimmingCharactersInSet(NSCharacterSet.whitespaceAndNewlineCharacterSet())}
             let eqval : (String,String)->(String) = { (line, del) in return trim(line.componentsSeparatedByString(del)[1]) }
             let line = trim(lineo!)
             if i == 0  {
                 if !line.hasPrefix("HTTP/1.1 101"){
-                    throw makeError("invalid response (\(line))")
+                    throw WebSocketError.Response("\(line)")
                 }
             } else if line != "" {
                 var value = ""
@@ -1266,18 +1302,18 @@ private class WebSocketConn {
         }
         if needsCompression {
             if serverMaxWindowBits < 8 || serverMaxWindowBits > 15 {
-                throw makeError("invalid server_max_window_bits")
+                throw WebSocketError.Options("invalid server_max_window_bits")
             }
             if serverMaxWindowBits < 8 || serverMaxWindowBits > 15 {
-                throw makeError("invalid client_max_window_bits")
+                throw WebSocketError.Options("invalid client_max_window_bits")
             }
             inflater = Inflater(windowBits: serverMaxWindowBits)
             if inflater == nil {
-                throw makeError("inflater init")
+                throw WebSocketError.Options("inflater init")
             }
             deflater = Deflater(windowBits: clientMaxWindowBits, memLevel: 8)
             if deflater == nil {
-                throw makeError("deflater init")
+                throw WebSocketError.Options("deflater init")
             }
         }
     }
@@ -1330,32 +1366,32 @@ private class WebSocketConn {
             fin = f.finished
         }
         if f.code == .Continue{
-            throw makeError("leader frame cannot be a continue frame", .Protocol)
+            throw WebSocketError.ProtocolError("leader frame cannot be a continue frame")
         }
         while !fin {
             let cf = try readFrameFragment(f)
             fin = cf.finished
             if cf.code != .Continue {
                 if !cf.code.isControl {
-                    throw makeError("only ping frames can be interlaced with fragments", .Protocol)
+                    throw WebSocketError.ProtocolError("only ping frames can be interlaced with fragments")
                 }
                 savedFrame = f
                 return cf
             }
         }
         if !f.utf8.completed {
-            throw makeError("incomplete utf8", .Payload)
+            throw WebSocketError.PayloadError("incomplete utf8")
         }
         return f
     }
 
-    var reusedBoxedBytes = BoxedBytes()
+    var reusedBoxedBytes = Payload()
     func readFrameFragment(var leader : Frame?) throws -> Frame {
         var b = UInt8(0)
         do {
             try readByte(&b)
         } catch {
-            throw makeError(error, .Protocol)
+            throw WebSocketError.ProtocolError((error as NSError).localizedDescription)
         }
         var inflate = false
         let fin = b >> 7 & 0x1 == 0x1
@@ -1365,24 +1401,24 @@ private class WebSocketConn {
         if inflater != nil && (rsv1 || (leader != nil && leader!.inflate)) {
             inflate = true
         } else if rsv1 || rsv2 || rsv3 {
-            throw makeError("invalid extension", .Protocol)
+            throw WebSocketError.ProtocolError("invalid extension")
         }
         var code = OpCode.Binary
         if let c = OpCode(rawValue: (b & 0xF)){
             code = c
         } else {
-            throw makeError("invalid opcode", .Protocol)
+            throw WebSocketError.ProtocolError("invalid opcode")
         }
         if !fin && code.isControl {
-            throw makeError("unfinished control frame", .Protocol)
+            throw WebSocketError.ProtocolError("unfinished control frame")
         }
         do {
             try readByte(&b)
         } catch {
-            throw makeError(error, .Protocol)
+            throw WebSocketError.ProtocolError((error as NSError).localizedDescription)
         }
         if b >> 7 & 0x1 == 0x1 {
-            throw makeError("server sent masked frame", .Protocol)
+            throw WebSocketError.ProtocolError("server sent masked frame")
         }
         var len64 = Int64(b & 0x7F)
         var bcount = 0
@@ -1393,14 +1429,14 @@ private class WebSocketConn {
         }
         if bcount != 0 {
             if code.isControl {
-                throw makeError("invalid payload size for control frame", .Protocol)
+                throw WebSocketError.ProtocolError("invalid payload size for control frame")
             }
             len64 = 0
             for var i = bcount-1; i >= 0; i-- {
                 do {
                     try readByte(&b)
                 } catch {
-                    throw makeError(error, .Protocol)
+                    throw WebSocketError.ProtocolError((error as NSError).localizedDescription)
                 }
                 len64 += Int64(b) << Int64(i*8)
             }
@@ -1408,10 +1444,10 @@ private class WebSocketConn {
         var len = Int(len64)
         if code == .Continue {
             if code.isControl {
-                throw makeError("control frame cannot have the 'continue' opcode", .Protocol)
+                throw WebSocketError.ProtocolError("control frame cannot have the 'continue' opcode")
             }
             if leader == nil {
-                throw makeError("continue frame is missing it's leader", .Protocol)
+                throw WebSocketError.ProtocolError("continue frame is missing it's leader")
             }
         }
         if code.isControl {
@@ -1419,11 +1455,11 @@ private class WebSocketConn {
                 leader = nil
             }
             if inflate {
-                throw makeError("control frame cannot be compressed", .Protocol)
+                throw WebSocketError.ProtocolError("control frame cannot be compressed")
             }
         }
         var utf8 : UTF8
-        var payload : BoxedBytes
+        var payload : Payload
         var statusCode = UInt16(0)
         var leaderCode : OpCode
         if leader != nil {
@@ -1438,7 +1474,7 @@ private class WebSocketConn {
         }
         if leaderCode == .Close {
             if len == 1 {
-                throw makeError("invalid payload size for close frame", .Protocol)
+                throw WebSocketError.ProtocolError("invalid payload size for close frame")
             }
             if len >= 2 {
                 var (b1, b2) = (UInt8(0), UInt8(0))
@@ -1446,12 +1482,12 @@ private class WebSocketConn {
                     try readByte(&b1)
                     try readByte(&b2)
                 } catch {
-                    throw makeError(error, .Payload)
+                    throw WebSocketError.PayloadError((error as NSError).localizedDescription)
                 }
                 statusCode = (UInt16(b1) << 8) + UInt16(b2)
                 len -= 2
                 if statusCode < 1000 || statusCode > 4999  || (statusCode >= 1004 && statusCode <= 1006) || (statusCode >= 1012 && statusCode <= 2999) {
-                    throw makeError("invalid status code for close frame", .Protocol)
+                    throw WebSocketError.ProtocolError("invalid status code for close frame")
                 }
             }
         }
@@ -1468,7 +1504,7 @@ private class WebSocketConn {
                     do {
                         n = try self.c!.read(&buffer, length: c)
                     } catch {
-                        throw makeError(error, .Payload)
+                        throw WebSocketError.PayloadError((error as NSError).localizedDescription)
                     }
                 }
                 do {
@@ -1477,7 +1513,7 @@ private class WebSocketConn {
                         do {
                             (bytes, bytesLen) = try inflater!.inflate(&buffer, length: n, final: (take - n == 0) && fin)
                         } catch {
-                            throw makeError(error, .Payload)
+                            throw WebSocketError.PayloadError((error as NSError).localizedDescription)
                         }
                         if bytesLen > 0 {
                             try utf8.append(bytes, length: bytesLen)
@@ -1486,7 +1522,7 @@ private class WebSocketConn {
                         try utf8.append(&buffer, length: n)
                     }
                 } catch {
-                    throw makeError(error, .Payload)
+                    throw WebSocketError.PayloadError((error as NSError).localizedDescription)
                 }
                 take -= n
             } while take > 0
@@ -1507,14 +1543,14 @@ private class WebSocketConn {
                         do {
                             n = try self.c!.read(&buffer, length: c)
                         } catch {
-                            throw makeError(error, .Payload)
+                            throw WebSocketError.PayloadError((error as NSError).localizedDescription)
                         }
                     }
                     let (bytes, bytesLen) : (UnsafeMutablePointer<UInt8>, Int)
                     do {
                         (bytes, bytesLen) = try inflater!.inflate(&buffer, length: n, final: (take - n == 0) && fin)
                     } catch {
-                        throw makeError(error, .Payload)
+                        throw WebSocketError.PayloadError((error as NSError).localizedDescription)
                     }
                     if bytesLen > 0 {
                         payload.append(bytes, length: bytesLen)
@@ -1523,7 +1559,7 @@ private class WebSocketConn {
                     do {
                         n = try self.c!.read(payload.ptr+start, length: take)
                     } catch {
-                        throw makeError(error, .Payload)
+                        throw WebSocketError.PayloadError((error as NSError).localizedDescription)
                     }
                     start += n
                 }
@@ -1537,7 +1573,7 @@ private class WebSocketConn {
     var head = [UInt8](count: 0xFF, repeatedValue: 0)
     func writeFrame(f : Frame) throws {
         if !f.finished{
-            throw makeError("cannot send unfinished frames", .Library)
+            throw WebSocketError.LibraryError("cannot send unfinished frames")
         }
         var hlen = 0
         let b : UInt8 = 0x80

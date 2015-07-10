@@ -12,6 +12,33 @@ let showDuration = false
 let startCase = 1
 let stopAtCase = 999
 
+private enum ErrCode : Int, CustomStringConvertible {
+    case Protocol = 1002, Payload = 1007, Undefined = -100, Codepoint = -101, Library = -102, Socket = -103
+    var description : String {
+        switch self {
+        case Protocol: return "Protocol error"
+        case Payload: return "Invalid payload data"
+        case Codepoint: return "Invalid codepoint"
+        case Library: return "Library error"
+        case Undefined: return "Undefined error"
+        case Socket: return "Broken socket"
+        }
+    }
+}
+
+private func makeError(error : String, _ code: ErrCode) -> ErrorType {
+   return NSError(domain: "com.github.tidwall.WebSocketConn", code: code.rawValue, userInfo: [NSLocalizedDescriptionKey:"\(error)"])
+}
+private func makeError(error : ErrorType, _ code: ErrCode) -> ErrorType {
+   let err = error as NSError
+   return NSError(domain: err.domain, code: code.rawValue, userInfo: [NSLocalizedDescriptionKey:"\(err.localizedDescription)"])
+}
+private func makeError(error : String) -> ErrorType {
+   return makeError(error, ErrCode.Library)
+}
+
+
+
 private func jsonObject(text : String) throws -> [String: AnyObject] {
     if let data = text.dataUsingEncoding(NSUTF8StringEncoding, allowLossyConversion: false),
         let json = try NSJSONSerialization.JSONObjectWithData(data, options: NSJSONReadingOptions.MutableContainers) as? [String : AnyObject] {
