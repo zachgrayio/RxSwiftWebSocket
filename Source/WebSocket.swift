@@ -15,7 +15,6 @@ public enum WebSocketError : ErrorType, CustomStringConvertible {
     case Address(String)
     case Closed(String)
     case Argument(String)
-    case Timeout(String)
     case Stream(String)
     case EOF(String)
     case Zlib(String)
@@ -31,7 +30,6 @@ public enum WebSocketError : ErrorType, CustomStringConvertible {
         case .Address(let details): return ["Address", details]
         case .Closed(let details): return ["Closed", details]
         case .Argument(let details): return ["Argument", details]
-        case .Timeout(let details): return ["Timeout", details]
         case .Stream(let details): return ["Stream", details]
         case .EOF(let details): return ["EOF", details]
         case .Zlib(let details): return ["Zlib", details]
@@ -49,21 +47,11 @@ public enum WebSocketError : ErrorType, CustomStringConvertible {
     }
     public var description : String {
         let parts = components()
-        return "\(parts[1])(\(parts[1]))"
+        return "\(parts[0])(\(parts[1]))"
     }
 }
 
-
-
-private let oneHundredYears : NSTimeInterval = 60*60*24*365*100
-//
-//private let errUTF8 = makeError("utf8")
-//private let errTimeout = makeError("timeout")
-//private let errClosed = makeError("closed")
-//private let errStream = makeError("stream error")
-//private let errEOF = makeError("eof")
-//private let errAddress = makeError("invalid address")
-//private let errNegative = makeError("length cannot be negative")
+private let defaultWait = -0.25
 
 private class Payload {
     var ptr : UnsafeMutablePointer<UInt8>
@@ -349,7 +337,11 @@ public class WebSocket {
     @inline(__always) private func signal(){
         pthread_cond_broadcast(&cond)
     }
-    private func wait(timeout : NSTimeInterval) -> WaitResult {
+    private func wait(timeout : NSTimeInterval = -1) -> WaitResult {
+        if timeout < 0 {
+            pthread_cond_wait(&cond, &mutex)
+            return .Signaled
+        }
         let timeInMs = Int(timeout * 1000)
         var tv = timeval()
         var ts = timespec()
@@ -437,7 +429,7 @@ public class WebSocket {
                         switch err {
                         case .ProtocolError:
                             (closeCode, closeReason) = (1002, "Protocol error")
-                        case .PayloadError:
+                        case .PayloadError, .UTF8:
                             (closeCode, closeReason) = (1007, "Invalid frame payload data")
                         default:
                             errorNotKnown = true
@@ -498,7 +490,7 @@ public class WebSocket {
                                 frame = self.frames.removeAtIndex(0)
                                 break
                             }
-                            self.wait(0.25)
+                            self.wait(defaultWait)
                         }
                         self.unlock()
                         if cclose || !wsopened {
@@ -506,12 +498,15 @@ public class WebSocket {
                         }
                         if frame != nil{
                             do {
-                                ws.writeDeadline = NSDate().dateByAddingTimeInterval(1)
                                 try ws.writeFrame(frame!)
                             } catch {
-                                let error = error as NSError
-                                if error.code != -102 || error.localizedDescription != "timeout" {
-                                    throw error
+                                if let error = error as? WebSocketError {
+                                    switch error{
+                                    case .LibraryError:
+                                        throw error
+                                    default:
+                                        break
+                                    }
                                 }
                             }
                             frame = nil
@@ -525,7 +520,6 @@ public class WebSocket {
                 privateReadyState = .Closing
             }
             for ;; {
-                ws.readDeadline = NSDate().dateByAddingTimeInterval(oneHundredYears)
                 let f = try ws.readFrame()
                 switch f.code {
                 case .Close:
@@ -550,13 +544,24 @@ public class WebSocket {
                 }
             }
         } catch {
-            let nserror = error as NSError
-            if nserror.code == 1002 {
-                NSThread.sleepForTimeInterval(0.05)
+            
+            var isEOF = false
+            var isClosed = false
+            if let error = error as? WebSocketError {
+                switch error {
+                case .ProtocolError:
+                    NSThread.sleepForTimeInterval(0.05)
+                case .EOF:
+                    isEOF = true
+                case .Closed:
+                    isClosed = true
+                default:
+                    break
+                }
             }
-            if nserror.localizedDescription != "eof" {
+            if !isEOF {
                 finalError = error
-                finalErrorIsClosed = nserror.localizedDescription == "closed"
+                finalErrorIsClosed = isClosed
                 if !finalErrorIsClosed {
                     fireEvent(.Error, error: error)
                 }
@@ -749,42 +754,18 @@ private class TCPConn {
             if rd.streamStatus == .Open && wr.streamStatus == .Open || rwerror != nil {
                 break
             }
-            wait(0.25)
+            wait(defaultWait)
         }
         pthread_mutex_unlock(&mutex)
         if rwerror != nil {
             throw rwerror!
         }
     }
-    var _writeDeadline : NSDate = NSDate().dateByAddingTimeInterval(oneHundredYears)
-    var writeDeadline : NSDate {
-        get {
-            pthread_mutex_lock(&mutex)
-            let deadline = _writeDeadline
-            pthread_mutex_unlock(&mutex)
-            return deadline
+    private func wait(timeout : NSTimeInterval = -1) -> WaitResult {
+        if timeout < 0 {
+            pthread_cond_wait(&cond, &mutex)
+            return .Signaled
         }
-        set {
-            pthread_mutex_lock(&mutex)
-            _writeDeadline = newValue
-            pthread_mutex_unlock(&mutex)
-        }
-    }
-    var _readDeadline : NSDate = NSDate().dateByAddingTimeInterval(oneHundredYears)
-    var readDeadline : NSDate {
-        get {
-            pthread_mutex_lock(&mutex)
-            let deadline = _readDeadline
-            pthread_mutex_unlock(&mutex)
-            return deadline
-        }
-        set {
-            pthread_mutex_lock(&mutex)
-            _readDeadline = newValue
-            pthread_mutex_unlock(&mutex)
-        }
-    }
-    func wait(timeout : NSTimeInterval) -> WaitResult {
         let timeInMs = Int(timeout * 1000)
         var tv = timeval()
         var ts = timespec()
@@ -809,29 +790,23 @@ private class TCPConn {
         if length < 0 {
             throw WebSocketError.Argument("TCPConn.write")
         }
+        lock()
+        defer { unlock() }
         var total = 0
         for ;; {
-            lock()
             for ;; {
                 if closed {
-                    unlock()
                     throw WebSocketError.Closed("TCPConn.write")
                 }
-                if NSDate().compare(_writeDeadline) != .OrderedAscending {
-                    unlock()
-                    throw WebSocketError.Timeout("TCPConn.write")
-                }
                 if let serror = errorForStatus(wr, details: "TCPConn.write") {
-                    unlock()
                     throw serror
                 }
                 if wr.hasSpaceAvailable {
                     break
                 }
-                wait(0.25)
+                wait(defaultWait)
             }
             let n = wr.write(buffer+total, maxLength: length-total)
-            unlock()
             if n < 0 {
                 throw WebSocketError.Stream("TCPConn.write")
             }
@@ -844,13 +819,13 @@ private class TCPConn {
         }
         return total
     }
-    func errorForStatus(stream : NSStream, details: String) -> WebSocketError? {
+    func errorForStatus(stream : NSStream, details: String) -> ErrorType? {
         switch stream.streamStatus {
         case .NotOpen, .Closed:
             return WebSocketError.Closed(details)
         case .Error:
             if let error = stream.streamError {
-                return WebSocketError.Stream(details + ": " + error.localizedDescription)
+                return error
             }
             return WebSocketError.Stream(details)
         case .AtEnd:
@@ -863,39 +838,25 @@ private class TCPConn {
         if length < 0 {
             throw WebSocketError.Argument("TCPConn.read")
         }
-        for var i = 0; i < 2; i++ {
-            lock()
-            for ;; {
-                if closed {
-                    unlock()
-                    throw WebSocketError.Closed("TCPConn.write")
-                }
-                if NSDate().compare(_readDeadline) != .OrderedAscending {
-                    unlock()
-                    throw WebSocketError.Timeout("TCPConn.write")
-                }
-                if let serror = errorForStatus(rd, details: "TCPConn.read") {
-                    unlock()
-                    throw serror
-                }
-                if rd.hasBytesAvailable {
-                    break
-                }
-                wait(0.25)
+        lock()
+        defer { unlock() }
+        for ;; {
+            if closed {
+                throw WebSocketError.Closed("TCPConn.read")
             }
-            if i == 1 {
-                unlock()
-                return 0
+            if let serror = errorForStatus(rd, details: "TCPConn.read") {
+                throw serror
             }
-            let n = rd.read(buffer, maxLength: length)
-            unlock()
-            if n < 0 {
-                throw WebSocketError.Stream("TCPConn.write")
-            } else if n > 0 {
-                return n
+            if rd.hasBytesAvailable {
+                break
             }
+            wait(defaultWait)
         }
-        return 0
+        let n = rd.read(buffer, maxLength: length)
+        if n < 0 {
+            throw WebSocketError.Stream("TCPConn.read")
+        }
+        return n
     }
     func signal(){
         pthread_mutex_lock(&mutex)
@@ -1388,11 +1349,7 @@ private class WebSocketConn {
     var reusedBoxedBytes = Payload()
     func readFrameFragment(var leader : Frame?) throws -> Frame {
         var b = UInt8(0)
-        do {
-            try readByte(&b)
-        } catch {
-            throw WebSocketError.ProtocolError((error as NSError).localizedDescription)
-        }
+        try readByte(&b)
         var inflate = false
         let fin = b >> 7 & 0x1 == 0x1
         let rsv1 = b >> 6 & 0x1 == 0x1
@@ -1412,11 +1369,7 @@ private class WebSocketConn {
         if !fin && code.isControl {
             throw WebSocketError.ProtocolError("unfinished control frame")
         }
-        do {
-            try readByte(&b)
-        } catch {
-            throw WebSocketError.ProtocolError((error as NSError).localizedDescription)
-        }
+        try readByte(&b)
         if b >> 7 & 0x1 == 0x1 {
             throw WebSocketError.ProtocolError("server sent masked frame")
         }
@@ -1433,11 +1386,7 @@ private class WebSocketConn {
             }
             len64 = 0
             for var i = bcount-1; i >= 0; i-- {
-                do {
-                    try readByte(&b)
-                } catch {
-                    throw WebSocketError.ProtocolError((error as NSError).localizedDescription)
-                }
+                try readByte(&b)
                 len64 += Int64(b) << Int64(i*8)
             }
         }
@@ -1478,12 +1427,8 @@ private class WebSocketConn {
             }
             if len >= 2 {
                 var (b1, b2) = (UInt8(0), UInt8(0))
-                do {
-                    try readByte(&b1)
-                    try readByte(&b2)
-                } catch {
-                    throw WebSocketError.PayloadError((error as NSError).localizedDescription)
-                }
+                try readByte(&b1)
+                try readByte(&b2)
                 statusCode = (UInt16(b1) << 8) + UInt16(b2)
                 len -= 2
                 if statusCode < 1000 || statusCode > 4999  || (statusCode >= 1004 && statusCode <= 1006) || (statusCode >= 1012 && statusCode <= 2999) {
@@ -1501,28 +1446,15 @@ private class WebSocketConn {
                     if c > buffer.count {
                         c = buffer.count
                     }
-                    do {
-                        n = try self.c!.read(&buffer, length: c)
-                    } catch {
-                        throw WebSocketError.PayloadError((error as NSError).localizedDescription)
-                    }
+                    n = try self.c!.read(&buffer, length: c)
                 }
-                do {
-                    if inflate {
-                        let (bytes, bytesLen) : (UnsafeMutablePointer<UInt8>, Int)
-                        do {
-                            (bytes, bytesLen) = try inflater!.inflate(&buffer, length: n, final: (take - n == 0) && fin)
-                        } catch {
-                            throw WebSocketError.PayloadError((error as NSError).localizedDescription)
-                        }
-                        if bytesLen > 0 {
-                            try utf8.append(bytes, length: bytesLen)
-                        }
-                    } else {
-                        try utf8.append(&buffer, length: n)
+                if inflate {
+                    let (bytes, bytesLen) = try inflater!.inflate(&buffer, length: n, final: (take - n == 0) && fin)
+                    if bytesLen > 0 {
+                        try utf8.append(bytes, length: bytesLen)
                     }
-                } catch {
-                    throw WebSocketError.PayloadError((error as NSError).localizedDescription)
+                } else {
+                    try utf8.append(&buffer, length: n)
                 }
                 take -= n
             } while take > 0
@@ -1540,27 +1472,14 @@ private class WebSocketConn {
                         if c > buffer.count {
                             c = buffer.count
                         }
-                        do {
-                            n = try self.c!.read(&buffer, length: c)
-                        } catch {
-                            throw WebSocketError.PayloadError((error as NSError).localizedDescription)
-                        }
+                        n = try self.c!.read(&buffer, length: c)
                     }
-                    let (bytes, bytesLen) : (UnsafeMutablePointer<UInt8>, Int)
-                    do {
-                        (bytes, bytesLen) = try inflater!.inflate(&buffer, length: n, final: (take - n == 0) && fin)
-                    } catch {
-                        throw WebSocketError.PayloadError((error as NSError).localizedDescription)
-                    }
+                    let (bytes, bytesLen) = try inflater!.inflate(&buffer, length: n, final: (take - n == 0) && fin)
                     if bytesLen > 0 {
                         payload.append(bytes, length: bytesLen)
                     }
                 } else if take > 0 {
-                    do {
-                        n = try self.c!.read(payload.ptr+start, length: take)
-                    } catch {
-                        throw WebSocketError.PayloadError((error as NSError).localizedDescription)
-                    }
+                    n = try self.c!.read(payload.ptr+start, length: take)
                     start += n
                 }
                 take -= n
@@ -1651,22 +1570,6 @@ private class WebSocketConn {
                 break
             }
             written += n
-        }
-    }
-    var readDeadline : NSDate {
-        get {
-            return c!.readDeadline
-        }
-        set {
-            c!.readDeadline = newValue
-        }
-    }
-    var writeDeadline : NSDate {
-        get {
-            return c!.writeDeadline
-        }
-        set {
-            c!.writeDeadline = newValue
         }
     }
 }
