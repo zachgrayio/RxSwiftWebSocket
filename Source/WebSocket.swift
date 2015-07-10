@@ -242,6 +242,21 @@ public struct WebSocketService :  OptionSetType {
     static var Voice: WebSocketService { return self.init(TCPConnService.Voice.rawValue) }
 }
 
+private let pt_entry: @convention(c) (UnsafeMutablePointer<Void>) -> UnsafeMutablePointer<Void> = { (ctx) in
+    let np = UnsafeMutablePointer<()->()>(ctx)
+    np.memory()
+    np.destroy()
+    np.dealloc(1)
+    return nil
+}
+private func dispatch(action: ()->()){
+    let p = UnsafeMutablePointer<()->()>.alloc(1)
+    p.initialize(action)
+    var t = pthread_t()
+    pthread_create(&t, nil, pt_entry, p)
+    pthread_detach(t)
+}
+
 public class WebSocket {
     private var mutex = pthread_mutex_t()
     private var cond = pthread_cond_t()
@@ -326,7 +341,7 @@ public class WebSocket {
         self.request = request
         self.subProtocols = subProtocols
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0), dispatch_get_main_queue()){
-            dispatch_async(dispatch_queue_create(nil, nil)) {
+            dispatch {
                 self.main()
             }
         }
@@ -462,7 +477,7 @@ public class WebSocket {
             privateReadyState = .Open
             fireEvent(.Opened)
             var pongFrames : [Frame] = []
-            dispatch_async(dispatch_queue_create(nil, nil)) {
+            dispatch {
                 var cclose = false
                 defer {
                     if cclose {
@@ -804,9 +819,7 @@ private class TCPConn {
                 if closed {
                     throw WebSocketError.Closed
                 }
-                if let serror = errorForStatus(wr, details: "write") {
-                    throw serror
-                }
+                try errorForStatus(wr, details: "write")
                 if wr.hasSpaceAvailable {
                     break
                 }
@@ -814,7 +827,7 @@ private class TCPConn {
             }
             let n = wr.write(buffer+total, maxLength: length-total)
             if n < 0 {
-                throw WebSocketError.Stream("write underflow")
+                continue
             }
             total += n
             if total > length {
@@ -825,19 +838,19 @@ private class TCPConn {
         }
         return total
     }
-    func errorForStatus(stream : NSStream, details: String) -> WebSocketError? {
+    func errorForStatus(stream : NSStream, details: String) throws {
         switch stream.streamStatus {
         case .NotOpen, .Closed:
-            return WebSocketError.Closed
+            throw WebSocketError.Closed
         case .Error:
             if let error = stream.streamError {
-                return WebSocketError.Stream(error.localizedDescription)
+                throw WebSocketError.Stream(error.localizedDescription)
             }
-            return WebSocketError.Stream(details)
+            throw WebSocketError.Stream(details)
         case .AtEnd:
-            return WebSocketError.EOF
+            throw WebSocketError.EOF
         default:
-            return nil
+            break
         }
     }
     func read(buffer : UnsafeMutablePointer<UInt8>, length : Int) throws -> Int {
@@ -850,19 +863,16 @@ private class TCPConn {
             if closed {
                 throw WebSocketError.Closed
             }
-            if let serror = errorForStatus(rd, details: "read") {
-                throw serror
-            }
+            try errorForStatus(rd, details: "read")
             if rd.hasBytesAvailable {
-                break
+                let n = rd.read(buffer, maxLength: length)
+                if n < 0 {
+                    continue
+                }
+                return n
             }
             wait(defaultWait)
         }
-        let n = rd.read(buffer, maxLength: length)
-        if n < 0 {
-            throw WebSocketError.Stream("read underflow")
-        }
-        return n
     }
     func signal(){
         pthread_mutex_lock(&mutex)
