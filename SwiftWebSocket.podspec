@@ -14,4 +14,5 @@ Pod::Spec.new do |s|
   s.source_files          = "Source/*.swift"
   s.requires_arc          = true
   s.libraries             = 'z'
+  s.dependency	'RxSwift', '~> 2.0.0-beta'
 end

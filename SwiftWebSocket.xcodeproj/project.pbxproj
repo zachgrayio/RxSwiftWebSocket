@@ -14,6 +14,16 @@
 		03D70CE01BDAC63600D245C3 /* SwiftWebSocket.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 03D1E7031B20897100AC49AC /* SwiftWebSocket.framework */; };
 		03D70CEC1BDAC70B00D245C3 /* Test.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03D70CE91BDAC70100D245C3 /* Test.swift */; };
 		03D70CED1BDAC70C00D245C3 /* Test.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03D70CE91BDAC70100D245C3 /* Test.swift */; };
+		1CEBE339223410129032A031 /* Pods.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F18F0C2C6AF08D2868965A9D /* Pods.framework */; };
+		AC2067FF1BFEF91B00AAC694 /* Observable+Tracer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2067FE1BFEF91B00AAC694 /* Observable+Tracer.swift */; };
+		AC2068001BFEF91B00AAC694 /* Observable+Tracer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2067FE1BFEF91B00AAC694 /* Observable+Tracer.swift */; };
+		AC2068021BFEFAA600AAC694 /* Tracer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2068011BFEFAA600AAC694 /* Tracer.swift */; };
+		AC2068031BFEFAA600AAC694 /* Tracer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2068011BFEFAA600AAC694 /* Tracer.swift */; };
+		AC4278FB1BFAD7A0002D6F25 /* WebSocket+RxEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC4278FA1BFAD7A0002D6F25 /* WebSocket+RxEvent.swift */; };
+		AC4278FC1BFAD7A0002D6F25 /* WebSocket+RxEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC4278FA1BFAD7A0002D6F25 /* WebSocket+RxEvent.swift */; };
+		ACA62FDA1BFF18CB0021179E /* WebSocket+RxSend.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACA62FD91BFF18CB0021179E /* WebSocket+RxSend.swift */; };
+		ACA62FDC1BFF19160021179E /* WebSocket+RxTrace.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACA62FDB1BFF19160021179E /* WebSocket+RxTrace.swift */; };
+		ACA62FDD1BFF19160021179E /* WebSocket+RxTrace.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACA62FDB1BFF19160021179E /* WebSocket+RxTrace.swift */; };
 		D71948F51B35E5670015C529 /* SwiftWebSocket.h in Headers */ = {isa = PBXBuildFile; fileRef = D71948F11B35E5670015C529 /* SwiftWebSocket.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		D719491A1B35E6640015C529 /* libz.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = D71948FA1B35E59D0015C529 /* libz.dylib */; };
 		D719491B1B35E7510015C529 /* SwiftWebSocket.h in Headers */ = {isa = PBXBuildFile; fileRef = D71948F11B35E5670015C529 /* SwiftWebSocket.h */; settings = {ATTRIBUTES = (Public, ); }; };
@@ -45,9 +55,17 @@
 		03D70CDB1BDAC63600D245C3 /* Test-iOS.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Test-iOS.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		03D70CE81BDAC70100D245C3 /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		03D70CE91BDAC70100D245C3 /* Test.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Test.swift; sourceTree = "<group>"; };
+		3373D44F14890D5021539B77 /* Pods.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = Pods.release.xcconfig; path = "Pods/Target Support Files/Pods/Pods.release.xcconfig"; sourceTree = "<group>"; };
+		AC2067FE1BFEF91B00AAC694 /* Observable+Tracer.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = "Observable+Tracer.swift"; sourceTree = "<group>"; };
+		AC2068011BFEFAA600AAC694 /* Tracer.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Tracer.swift; sourceTree = "<group>"; };
+		AC4278FA1BFAD7A0002D6F25 /* WebSocket+RxEvent.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = "WebSocket+RxEvent.swift"; sourceTree = "<group>"; };
+		ACA62FD91BFF18CB0021179E /* WebSocket+RxSend.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = "WebSocket+RxSend.swift"; sourceTree = "<group>"; };
+		ACA62FDB1BFF19160021179E /* WebSocket+RxTrace.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = "WebSocket+RxTrace.swift"; sourceTree = "<group>"; };
 		D71948F11B35E5670015C529 /* SwiftWebSocket.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SwiftWebSocket.h; sourceTree = "<group>"; };
 		D71948FA1B35E59D0015C529 /* libz.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libz.dylib; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.10.sdk/usr/lib/libz.dylib; sourceTree = DEVELOPER_DIR; };
 		D71949011B35E6130015C529 /* SwiftWebSocket.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = SwiftWebSocket.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		EF06BAEBE280722675FAFC7B /* Pods.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = Pods.debug.xcconfig; path = "Pods/Target Support Files/Pods/Pods.debug.xcconfig"; sourceTree = "<group>"; };
+		F18F0C2C6AF08D2868965A9D /* Pods.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -56,6 +74,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				03D1E7221B208A5C00AC49AC /* libz.dylib in Frameworks */,
+				1CEBE339223410129032A031 /* Pods.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -94,6 +113,8 @@
 				D71948F01B35E5670015C529 /* Source */,
 				03D70CE71BDAC70100D245C3 /* Test */,
 				03D1E7041B20897100AC49AC /* Products */,
+				567C59DC79E9EEDCB1F14B3F /* Pods */,
+				228771ACE8FA55713D3F910A /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -117,12 +138,34 @@
 			path = Test;
 			sourceTree = "<group>";
 		};
+		228771ACE8FA55713D3F910A /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				F18F0C2C6AF08D2868965A9D /* Pods.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		567C59DC79E9EEDCB1F14B3F /* Pods */ = {
+			isa = PBXGroup;
+			children = (
+				EF06BAEBE280722675FAFC7B /* Pods.debug.xcconfig */,
+				3373D44F14890D5021539B77 /* Pods.release.xcconfig */,
+			);
+			name = Pods;
+			sourceTree = "<group>";
+		};
 		D71948F01B35E5670015C529 /* Source */ = {
 			isa = PBXGroup;
 			children = (
 				0319670F1B4D96B80033860E /* Info.plist */,
 				D71948F11B35E5670015C529 /* SwiftWebSocket.h */,
+				AC2067FE1BFEF91B00AAC694 /* Observable+Tracer.swift */,
+				AC2068011BFEFAA600AAC694 /* Tracer.swift */,
 				03285D2A1B4A9F1A0078A1AA /* WebSocket.swift */,
+				AC4278FA1BFAD7A0002D6F25 /* WebSocket+RxEvent.swift */,
+				ACA62FD91BFF18CB0021179E /* WebSocket+RxSend.swift */,
+				ACA62FDB1BFF19160021179E /* WebSocket+RxTrace.swift */,
 			);
 			path = Source;
 			sourceTree = "<group>";
@@ -153,10 +196,12 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 03D1E7191B20897100AC49AC /* Build configuration list for PBXNativeTarget "SwiftWebSocket-iOS" */;
 			buildPhases = (
+				1F3629484F6ECC61CF1CA7E9 /* Check Pods Manifest.lock */,
 				03D1E6FE1B20897100AC49AC /* Sources */,
 				03D1E6FF1B20897100AC49AC /* Frameworks */,
 				03D1E7001B20897100AC49AC /* Headers */,
 				03D1E7011B20897100AC49AC /* Resources */,
+				AB98A4D0167BCA3883E06F2D /* Copy Pods Resources */,
 			);
 			buildRules = (
 			);
@@ -296,12 +341,50 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		1F3629484F6ECC61CF1CA7E9 /* Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Check Pods Manifest.lock";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_ROOT}/../Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [[ $? != 0 ]] ; then\n    cat << EOM\nerror: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\nEOM\n    exit 1\nfi\n";
+			showEnvVarsInLog = 0;
+		};
+		AB98A4D0167BCA3883E06F2D /* Copy Pods Resources */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Copy Pods Resources";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${SRCROOT}/Pods/Target Support Files/Pods/Pods-resources.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		03D1E6FE1B20897100AC49AC /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AC2068021BFEFAA600AAC694 /* Tracer.swift in Sources */,
 				03285D2B1B4A9F1A0078A1AA /* WebSocket.swift in Sources */,
+				ACA62FDA1BFF18CB0021179E /* WebSocket+RxSend.swift in Sources */,
+				ACA62FDC1BFF19160021179E /* WebSocket+RxTrace.swift in Sources */,
+				AC4278FB1BFAD7A0002D6F25 /* WebSocket+RxEvent.swift in Sources */,
+				AC2067FF1BFEF91B00AAC694 /* Observable+Tracer.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -325,7 +408,11 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AC2068031BFEFAA600AAC694 /* Tracer.swift in Sources */,
 				031967101B4D96C40033860E /* WebSocket.swift in Sources */,
+				AC4278FC1BFAD7A0002D6F25 /* WebSocket+RxEvent.swift in Sources */,
+				AC2068001BFEF91B00AAC694 /* Observable+Tracer.swift in Sources */,
+				ACA62FDD1BFF19160021179E /* WebSocket+RxTrace.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -437,6 +524,7 @@
 		};
 		03D1E71A1B20897100AC49AC /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = EF06BAEBE280722675FAFC7B /* Pods.debug.xcconfig */;
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				DEFINES_MODULE = YES;
@@ -455,6 +543,7 @@
 		};
 		03D1E71B1B20897100AC49AC /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 3373D44F14890D5021539B77 /* Pods.release.xcconfig */;
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				DEFINES_MODULE = YES;
@@ -600,6 +689,7 @@
 				03D70CD51BDAC5EC00D245C3 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
 		};
 		03D70CE31BDAC63600D245C3 /* Build configuration list for PBXNativeTarget "Test-iOS" */ = {
 			isa = XCConfigurationList;
@@ -608,6 +698,7 @@
 				03D70CE51BDAC63600D245C3 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
 		};
 		D71949141B35E6160015C529 /* Build configuration list for PBXNativeTarget "SwiftWebSocket-OSX" */ = {
 			isa = XCConfigurationList;
